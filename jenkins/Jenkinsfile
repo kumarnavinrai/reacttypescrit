@@ -1,0 +1,38 @@
+node('modernization-dev') {
+    try {
+        def GIT_REPO = "git@bitbucket.org:smartshift/modernization-react.git"
+        def GIT_CREDENTIALS = "8f088417-5324-4e43-8a0c-d53ea0c082ef"
+        def MVN_SETTINGS="amp-maven-settings"
+        def GIT_BRANCH="develop"
+
+        properties([[$class: 'BuildDiscarderProperty', strategy: [$class: 'LogRotator', artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '45', numToKeepStr: '5']]]);
+        properties([parameters([booleanParam(defaultValue: false, description: 'Build a release from the current commit?', name: 'RELEASE')])])
+
+        stage('SCM checkout') {
+            echo '****************************************\r*** SCM checkout'
+            git branch: "${GIT_BRANCH}", credentialsId: "${GIT_CREDENTIALS}", url: "${GIT_REPO}"
+            echo '** Show content **'
+            sh 'ls -lA'
+        }
+
+        stage('Build and deploy jars and images to Nexus') {
+            echo '****************************************\r*** Building package'
+            withMaven(maven: 'M3', mavenSettingsConfig: "${MVN_SETTINGS}") {
+                sh 'mvn clean deploy'
+            }
+        }
+
+        stage('Release') {
+            if( params.RELEASE ){
+                echo '****************************************\r*** Releasing the library to Nexus'
+                withMaven(maven: 'M3', mavenSettingsConfig:  "${MVN_SETTINGS}") {
+                    sh ' mvn -B -DskipTests=true releaser:release'
+                }
+            } else {
+                echo '****************************************\r*** Skipping the release'
+            }
+        }
+    } finally {
+        cleanWs()
+    }
+}
